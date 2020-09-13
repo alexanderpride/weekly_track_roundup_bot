@@ -2,17 +2,20 @@ import requests
 import re
 import os
 import spotipy
+import time
 from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class Bot:
 
     def __init__(self):
 
         self.spotipy_auth_manager = SpotifyOAuth(scope="playlist-modify-public", username="Alexander Pride")
-        self.sp = spotipy.Spotify(auth=self.getToken())
+        self.sp = spotipy.Spotify(auth_manager=self.spotipy_auth_manager)
+        self.latest_video = None
 
     def isAcessTokenExpired(self):
 
@@ -25,24 +28,37 @@ class Bot:
         refresh_token = token['refresh_token']
 
         new_token = self.spotipy_auth_manager.refresh_access_token(refresh_token)
-        self.sp = spotipy.Spotify(auth=new_token["access_token"])
+        self.sp = spotipy.Spotify(auth=new_token["access_token"], auth_manager=self.spotipy_auth_manager)
 
     def getToken(self):
 
         return self.spotipy_auth_manager.get_cached_token()
 
-    def getWTRDesc(self):
+    def isNewVideo(self):
 
-        playlist_url = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=PLP4CSgl7K7or84AAhr7zlLNpghEnKWu2c&key=" + os.getenv("API_KEY")
+        latest_video = self.getWTRvideo()
+
+        if latest_video != self.latest_video:
+
+            self.latest_video = latest_video
+
+            return True
+
+        else:
+
+            return False
+
+    def getWTRvideo(self):
+
+        playlist_url = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=1&playlistId=PLP4CSgl7K7or84AAhr7zlLNpghEnKWu2c&key=" + os.getenv("API_KEY")
 
         res = requests.get(playlist_url)
 
         if res.status_code == 200:
 
-            latest_video = res.json()["items"][0]
-            latest_video_description = latest_video["snippet"]["description"]
+            latest_video = res.json()["items"][0]["snippet"]
 
-            return latest_video_description
+            return latest_video
 
         else:
 
@@ -99,26 +115,26 @@ class Bot:
 
             # Replace all the parts that Spotify struggles to parse and format string for search
 
-            print()
-            print("Song searching for:")
-            print(song)
+            # print()
+            # print("Song searching for:")
+            # print(song)
 
             search_term = self.getSearchTerm(song)
 
-            print("Using search term:")
-            print(search_term)
+            # print("Using search term:")
+            # print(search_term)
 
             results = self.sp.search(search_term, type="track")
 
             tracks = results["tracks"]
 
             # CHeck if there was a song returned
-            print("Song found:")
+            # print("Song found:")
             if tracks["total"] > 0:
 
                 trackItems = tracks["items"]
 
-                print(trackItems[0]["artists"][0]["name"] + ", " + trackItems[0]["name"])
+                # print(trackItems[0]["artists"][0]["name"] + ", " + trackItems[0]["name"])
 
                 songIDs.append(trackItems[0]["id"])
 
@@ -126,8 +142,7 @@ class Bot:
 
                 unfoundSongs.append(song)
 
-        print()
-        print("Number of songs found by Spotify: " + str(len(songIDs)))
+        print("Number of songs found by Spotify: " + str(len(songIDs)) + "\n")
         print("Couldn't find:")
 
         for song in unfoundSongs:
@@ -142,7 +157,25 @@ class Bot:
         try:
 
             self.sp.user_playlist_replace_tracks(self.sp.current_user()["id"], "5kCKSF7HlIMjlIrStlCCra", songIDs)
+            print("\nSuccessfully added songs to playlist")
 
         except:
 
-            print("Error adding items to playlist")
+            print("\nError adding items to playlist")
+
+    def run(self):
+
+        update_time = time.localtime(time.time())
+        print("-" * 10 + "Updating playlist at {0}:{1}:{2} on {3}/{4}/{5}".format(update_time.tm_hour,
+                                                                                  update_time.tm_min,
+                                                                                  update_time.tm_sec,
+                                                                                  update_time.tm_mday,
+                                                                                  update_time.tm_mon,
+                                                                                  update_time.tm_year) + "-" * 10)
+        print()
+        print(self.latest_video["title"])
+        print()
+        songs = self.getSongs(self.latest_video["description"])
+        songIDs = self.getSongIDs(songs)
+        self.addToPlaylist(songIDs)
+        print()
