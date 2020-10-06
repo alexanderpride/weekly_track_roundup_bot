@@ -88,22 +88,35 @@ class Bot:
         3: The artists that feature on the song, after the 'ft.'
         """
 
-        # Splits the song into category 1, and a joined category 2 and 3
-        artists, song = song.split(" - ")
-        artists = re.split(r'[,&]', artists)
+        _song = song
 
-        # Separate 2 and 3 into their own categories, and create a list of features
-        if "ft." in song:
-            song, features = song.split("ft.")
-            features = re.split(r'[,&]', features)
+        try:
 
-        # Create a search string with the song name and artists included
-        search_term = song + " "
+            # Splits the song into category 1, and a joined category 2 and 3
+            artists, song = song.split(" - ")
+            artists = re.split(r'[,&]', artists)
 
-        for artist in artists:
-            search_term += artist
+            # Separate 2 and 3 into their own categories, and create a list of features
+            if "ft." in song:
 
-        return search_term
+                song, features = song.split("ft.")
+                features = re.split(r'[,&]', features)
+
+            # Create a search string with the song name and artists included
+            search_term = song + " "
+
+            for artist in artists:
+                search_term += artist
+
+            return search_term
+
+        except ValueError:
+
+            print()
+            print("Error processing: " + song)
+            print()
+
+            return _song
 
     def getSongIDs(self, songs):
 
