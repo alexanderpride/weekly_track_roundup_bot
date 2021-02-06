@@ -1,0 +1,22 @@
+The latest Weekly Track Roundup Video has been uploaded
+
+Title: $title
+Video Upload Time: $video_upload_time
+Bot Run Time: $bot_run_time
+
+There were $num_songs_uploaded songs in the video description
+The Bot found $num_songs_found songs on spotify
+
+Summary of songs searched...
+----------
+
+$songs
+
+----------
+
+COULDN'T FIND
+----------
+
+$unfound_songs
+
+----------

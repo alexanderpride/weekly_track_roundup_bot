@@ -1,194 +1,182 @@
-import requests
-import re
+from __future__ import print_function
+
 import os
 import spotipy
-import time
-from spotipy.oauth2 import SpotifyOAuth
+import smtplib
+import ssl
+import sys
+
+from googleapiclient.discovery import build
 from dotenv import load_dotenv
+from spotipy.oauth2 import SpotifyOAuth
+from email.mime.text import MIMEText
+
+from configuration import *
 
 load_dotenv()
+
+SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 
 class Bot:
 
     def __init__(self):
+        """Connect and validate to the APIs necessary for running"""
 
-        self.spotipy_auth_manager = SpotifyOAuth(scope="playlist-modify-public", username="Alexander Pride")
-        self.sp = spotipy.Spotify(auth_manager=self.spotipy_auth_manager)
-        self.latest_video = None
+        # Set up for accessing the youtube API
+        api_service_name = "youtube"
+        api_version = "v3"
+        youtube = build(api_service_name,
+                        api_version,
+                        developerKey=os.getenv("YOUTUBE_API_KEY"))
 
-    def isAcessTokenExpired(self):
+        self.youtube = youtube
 
-        token = self.getToken()
-        return self.spotipy_auth_manager.is_token_expired(token)
+        # Set up for Spotipy
 
-    def refreshAccessToken(self):
+        self.spotipy = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="playlist-modify-public",
+                                                                 username=os.getenv("SPOTIPY_USERNAME")))
 
-        token = self.getToken()
-        refresh_token = token['refresh_token']
 
-        new_token = self.spotipy_auth_manager.refresh_access_token(refresh_token)
-        self.sp = spotipy.Spotify(auth=new_token["access_token"], auth_manager=self.spotipy_auth_manager)
+    def __get_video__(self, playlist_id):
+        """ Collect the latest video from the Weekly Track Roundup playlist and then
+        return the description from the video, where the songs are listed"""
 
-    def getToken(self):
+        request = self.youtube.playlistItems().list(
+            part="snippet",
+            maxResults=1,
+            playlistId=playlist_id
+        )
+        response = request.execute()
 
-        return self.spotipy_auth_manager.get_cached_token()
+        video = response['items'][0]['snippet']
 
-    def isNewVideo(self):
+        return video
 
-        latest_video = self.getWTRvideo()
+    def __is_new_video__(self, video):
+        """Check if the video is the latest video. If the video is new update the upload time and returns true,
+        else just returns false"""
 
-        if latest_video != self.latest_video:
+        flag = False
 
-            self.latest_video = latest_video
+        if os.path.exists(UPLOAD_TIME_FILE):
 
-            return True
+            with open(UPLOAD_TIME_FILE, 'r') as upload_file:
+
+                if upload_file.read() < video['publishedAt']:
+
+                    self.__update_upload_time__(video)
+
+                    flag = True
 
         else:
 
-            return False
+            self.__update_upload_time__(video)
 
-    def getWTRvideo(self):
+            flag = True
 
-        playlist_url = "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=1&playlistId=PLP4CSgl7K7or84AAhr7zlLNpghEnKWu2c&key=" + os.getenv("API_KEY")
+        return flag
 
-        res = requests.get(playlist_url)
+    @staticmethod
+    def __update_upload_time__(video):
 
-        if res.status_code == 200:
+        with open(UPLOAD_TIME_FILE, 'w+') as upload_file:
 
-            latest_video = res.json()["items"][0]["snippet"]
+            upload_file.write(video['publishedAt'])
 
-            return latest_video
-
-        else:
-
-            print("Couldn't access the YouTube API")
-            print("Status code", res.status_code)
-            print(res.json())
-
-    def getSongs(self, desc):
-
-        songs = re.findall(r'.+ - .+', desc)
-
-        return songs
-
-    def getSearchTerm(self, song):
-        """
-        The format of the song desc can have a few different formats
-        A couple of examples are...
-
-        Anderson .Paak - Lockdown (Remix) ft. Noname, JID & Jay Rock
-        Troye Sivan - Rager teenager!
-        Machine Gun Kelly & blackbear - my ex's best friend
-
-        There are three main categories I can determine in the song desc
-
-        1: The artists that the song belongs to, on the left of the ' - '
-        2: The name of the song, on the right of the ' - '
-        3: The artists that feature on the song, after the 'ft.'
+    @staticmethod
+    def __process_description__(video):
+        """Collects all the songs listed in the video's description and formats them to
+        be easily found by Spotify. Returns a list of tuples containing how the song was
+        listed in the description and how it has been processed for spotify
         """
 
-        _song = song
+        description = video['description']
 
-        try:
+        tracks = get_tracks(description)
+        processed_tracks = []
 
-            # Splits the song into category 1, and a joined category 2 and 3
-            artists, song = song.split(" - ")
-            artists = re.split(r'[,&]', artists)
+        for track in tracks:
 
-            # Separate 2 and 3 into their own categories, and create a list of features
-            if "ft." in song:
+            processed_track = process_track(track)
+            processed_tracks.append((track, processed_track))
 
-                song, features = song.split("ft.")
-                features = re.split(r'[,&]', features)
+        return processed_tracks
 
-            # Create a search string with the song name and artists included
-            search_term = song + " "
+    def __get_tracks_information__(self, processed_tracks):
+        """Query Spotify's database to collect the track and track ID"""
 
-            for artist in artists:
-                search_term += artist
+        items = []
 
-            return search_term
+        for processed_track in processed_tracks:
 
-        except ValueError:
+            video_term, q = processed_track
 
-            print()
-            print("Error processing: " + song)
-            print()
+            result = self.spotipy.search(q=q, type='track')
 
-            return _song
+            tracks = result["tracks"]
 
-    def getSongIDs(self, songs):
-
-        songIDs = []
-        unfoundSongs = []
-        print("Songs in Video Desc: " + str(len(songs)))
-
-        for song in songs:
-
-            # Replace all the parts that Spotify struggles to parse and format string for search
-
-            # print()
-            # print("Song searching for:")
-            # print(song)
-
-            search_term = self.getSearchTerm(song)
-
-            # print("Using search term:")
-            # print(search_term)
-
-            results = self.sp.search(search_term, type="track")
-
-            tracks = results["tracks"]
-
-            # CHeck if there was a song returned
-            # print("Song found:")
             if tracks["total"] > 0:
 
-                trackItems = tracks["items"]
+                track = tracks["items"][0]
 
-                # print(trackItems[0]["artists"][0]["name"] + ", " + trackItems[0]["name"])
+                id = track["id"]
+                title = track["name"]
+                artist = [artist["name"] for artist in track["artists"]]
 
-                songIDs.append(trackItems[0]["id"])
+                items.append(TrackInformation(video_term, q, id, title, artist))
 
             else:
 
-                unfoundSongs.append(song)
+                items.append(TrackInformation(video_term, q, None))
 
-        print("Number of songs found by Spotify: " + str(len(songIDs)) + "\n")
-        print("Couldn't find:")
+        return items
 
-        for song in unfoundSongs:
-            print(song)
+    def __update_playlist__(self, tracks_information):
+        """Replace tracks in playlist with the new tracks"""
 
-        return songIDs
+        ids = [track.id for track in tracks_information if track.id]
 
-    def addToPlaylist(self, songIDs):
+        self.spotipy.user_playlist_replace_tracks(self.spotipy.current_user()["id"],
+                                                  os.getenv("PLAYLIST_ID"), ids)
 
-        """5kCKSF7HlIMjlIrStlCCra"""
+    def __send_email__(self, tracks_information, video):
+        """Send email to hoster describing the tracks that were found and not found.
+
+        The email subject line and body comes from the construct_email function in the configuration file"""
+
+        subject, email_body = construct_email(tracks_information, video)
+
+        message = MIMEText(email_body, 'plain')
+        message['to'] = TO_EMAIL_ADDRESS
+        message['from'] = FROM_EMAIL_ADDRESS
+        message['subject'] = subject
+
+        context = ssl.create_default_context()
 
         try:
 
-            self.sp.user_playlist_replace_tracks(self.sp.current_user()["id"], "5kCKSF7HlIMjlIrStlCCra", songIDs)
-            print("\nSuccessfully added songs to playlist")
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
+
+                username, password = os.getenv("GMAIL_USERNAME"), os.getenv("GMAIL_PASSWORD")
+                server.login(username, password)
+
+                server.sendmail(FROM_EMAIL_ADDRESS, TO_EMAIL_ADDRESS, message.as_string())
 
         except:
 
-            print("\nError adding items to playlist")
+            print("Unexpected error:", sys.exc_info()[0])
 
     def run(self):
 
-        update_time = time.localtime(time.time())
-        print("-" * 10 + "Updating playlist at {0}:{1}:{2} on {3}/{4}/{5}".format(update_time.tm_hour,
-                                                                                  update_time.tm_min,
-                                                                                  update_time.tm_sec,
-                                                                                  update_time.tm_mday,
-                                                                                  update_time.tm_mon,
-                                                                                  update_time.tm_year) + "-" * 10)
-        print()
-        print(self.latest_video["title"])
-        print()
-        songs = self.getSongs(self.latest_video["description"])
-        songIDs = self.getSongIDs(songs)
-        self.addToPlaylist(songIDs)
-        print()
+        video = self.__get_video__(YOUTUBE_PLAYLIST_ID)
+
+        if self.__is_new_video__(video):
+
+            processed_tracks = self.__process_description__(video)
+
+            tracks_information = self.__get_tracks_information__(processed_tracks)
+
+            self.__update_playlist__(tracks_information)
+            self.__send_email__(tracks_information, video)
+            print("Code run at " + str(datetime.datetime.now()))
