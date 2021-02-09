@@ -4,7 +4,6 @@ import os
 import spotipy
 import smtplib
 import ssl
-import sys
 
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
@@ -163,9 +162,9 @@ class Bot:
 
                 server.sendmail(FROM_EMAIL_ADDRESS, TO_EMAIL_ADDRESS, message.as_string())
 
-        except:
+        except Exception as e:
 
-            print("Unexpected error:", sys.exc_info()[0])
+            print("Unexpected error:", e)
 
     def run(self):
 
@@ -180,3 +179,17 @@ class Bot:
             self.__update_playlist__(tracks_information)
             self.__send_email__(tracks_information, video)
             print("Code run at " + str(datetime.datetime.now()))
+
+
+    def force_run(self):
+
+        video = self.__get_video__(YOUTUBE_PLAYLIST_ID)
+
+        processed_tracks = self.__process_description__(video)
+
+        tracks_information = self.__get_tracks_information__(processed_tracks)
+
+        self.__update_playlist__(tracks_information)
+        self.__send_email__(tracks_information, video)
+        print("Code run at " + str(datetime.datetime.now()))
+
