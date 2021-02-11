@@ -13,6 +13,4 @@ def timed_run():
 
 if __name__ == '__main__':
 
-    # scheduler.start()
-    bot = Bot()
-    bot.force_run()
+    scheduler.start()
