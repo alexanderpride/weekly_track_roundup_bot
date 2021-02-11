@@ -4,6 +4,7 @@ import os
 import spotipy
 import smtplib
 import ssl
+import spotify_auth_helper
 
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
@@ -33,9 +34,13 @@ class Bot:
 
         # Set up for Spotipy
 
-        self.spotipy = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="playlist-modify-public",
-                                                                 username=os.getenv("SPOTIPY_USERNAME")))
+        if not os.path.exists(CACHE_NAME):
 
+            spotify_auth_helper.create_cache(CACHE_NAME)
+
+        self.spotipy = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="playlist-modify-public",
+                                                                 username=os.getenv("SPOTIPY_USERNAME"),
+                                                                 cache_path=CACHE_NAME))
 
     def __get_video__(self, playlist_id):
         """ Collect the latest video from the Weekly Track Roundup playlist and then
