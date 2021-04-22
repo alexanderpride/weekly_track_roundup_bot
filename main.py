@@ -4,7 +4,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 scheduler = BlockingScheduler()
 
 
-@scheduler.scheduled_job('interval', hours=6)
+@scheduler.scheduled_job('interval', hours=1)
 def timed_run():
 
     bot = Bot()
@@ -13,5 +13,4 @@ def timed_run():
 
 if __name__ == '__main__':
 
-    bot = Bot().run()
     scheduler.start()

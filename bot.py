@@ -36,7 +36,9 @@ class Bot:
 
         if not os.path.exists(CACHE_NAME):
 
-            spotify_auth_helper.create_cache(CACHE_NAME)
+            spotipy_cache = os.getenv("SPOTIPY_CACHE")
+
+            spotify_auth_helper.create_cache(CACHE_NAME, spotipy_cache)
 
         self.spotipy = spotipy.Spotify(auth_manager=SpotifyOAuth(scope="playlist-modify-public",
                                                                  username=os.getenv("SPOTIPY_USERNAME"),
