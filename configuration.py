@@ -6,12 +6,13 @@ from track_information import TrackInformation
 
 
 YOUTUBE_PLAYLIST_ID = "PLP4CSgl7K7or84AAhr7zlLNpghEnKWu2c"
-UPLOAD_TIME_FILE = "uploadfile"
 EMAIL_MESSAGE_TEMPLATE = "email_template"
 TO_EMAIL_ADDRESS = "alexandercpride@gmail.com"
 FROM_EMAIL_ADDRESS = "weeklytrackroundupbot@gmail.com"
-CACHE_NAME = ".cache"
+FREQUENCY = 1
 
+CACHE_NAME = ".cache"
+UPLOAD_TIME_FILE = "uploadfile"
 
 def get_tracks(description: str) -> list[str]:
     """
